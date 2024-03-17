@@ -1,7 +1,11 @@
-use std::{time::{Duration, Instant}, ops::Div};
+use std::time::{Duration, Instant};
+use std::collections::VecDeque;
+use std::ops::Div;
 
 use rand::prelude::*;
+use rayon::iter::IndexedParallelIterator;
 use rayon::prelude::*;
+
 
 fn generate_random_numbers(length: usize) -> Vec<u8> {
     let mut rng = rand::thread_rng();
@@ -10,7 +14,7 @@ fn generate_random_numbers(length: usize) -> Vec<u8> {
 
 type MultipleSearch = dyn Fn(&Vec<u8>, &Vec<u8>) -> Vec<Option<usize>>;
 
-fn binary_search(searched: u8, arr: &Vec<u8>, mut low: usize, mut high: usize) -> Option<usize> {
+fn _binary_search(searched: u8, arr: &Vec<u8>, mut low: usize, mut high: usize) -> Option<usize> {
    let length = arr.len();
    let mut mid = length / 2;
    let mut current = arr[mid];
@@ -29,7 +33,10 @@ fn binary_search(searched: u8, arr: &Vec<u8>, mut low: usize, mut high: usize) -
 fn linear_multiple_search(searched_numbers: &Vec<u8>, numbers: &Vec<u8>) -> Vec<Option<usize>> {
     let mut found: Vec<Option<usize>> = vec![None; searched_numbers.len()];
     for i in 0..searched_numbers.len() {
-        found[i] = binary_search(searched_numbers[i], numbers, 0, numbers.len() - 1);
+        found[i] = match numbers.binary_search(&searched_numbers[i]) {
+            Ok(index) => Some(index),
+            Err(_) => None,
+        };
     }
     found
 }
@@ -38,19 +45,110 @@ fn multiple_value_search(searched_numbers: &Vec<u8>, numbers: &Vec<u8>) -> Vec<O
     let mut found: Vec<Option<usize>> = vec![None; searched_numbers.len()];
     let mut last_found: usize = 0;
     for i in 0..searched_numbers.len() {
-        let option_index = binary_search(searched_numbers[i], numbers, last_found, numbers.len() - 1);
-        if let Some(index) = option_index {
-            last_found = index;
-        }
-        found[i] = option_index;
+        let result = &numbers[last_found..].binary_search(&searched_numbers[i]);
+        found[i] = match result {
+            Ok(index) => {
+                last_found += *index; 
+                Some(*index)
+            },
+            Err(index) => {
+                last_found += *index;
+                last_found = last_found.saturating_sub(1);
+                None
+            },
+        };
     }
     found
 }
 
+#[derive(Debug)]
+struct SearchTask {
+    low: usize,
+    high: usize,
+    low_searched: usize,
+    high_searched: usize,
+}
 
+#[inline(always)]
+fn mid(low: usize, high: usize) -> usize {
+    low + (high - low) / 2
+}
 
-fn binary_multiple_search(_searched_numbers: &Vec<u8>, _numbers: &Vec<u8>) -> Vec<Option<usize>> {
-    (0..100).map(|num| Some(num)).collect()
+fn binary_multiple_search(searched_numbers: &Vec<u8>, numbers: &Vec<u8>) -> Vec<Option<usize>> {
+    let mut found: Vec<Option<usize>> = vec![None; searched_numbers.len()];
+    let mut stack: VecDeque<SearchTask> = VecDeque::with_capacity(
+        (searched_numbers.len() as f64).log2() as usize + 100
+        );
+    stack.push_back(SearchTask { 
+        // high and low are included
+        low: 0,
+        high: numbers.len() - 1,
+        low_searched: 0,
+        high_searched: searched_numbers.len() - 1,
+    });
+    //let mut count = 0;
+    loop {
+        /*if count >= 4 {
+            break;
+        }*/
+        let c_option = stack.pop_back();
+        match c_option {
+            Some(c) => {
+                //let c = dbg!(c);
+                if c.low > c.high || c.low_searched > c.high_searched {
+                    //println!("ignored");
+                    continue
+                }
+                let searched_index: usize = mid(c.low_searched, c.high_searched);
+                //let searched_index = dbg!(searched_index);
+                let result = numbers[c.low..c.high + 1].binary_search(&searched_numbers[searched_index]);
+                match result {
+                    Ok(index) => {
+                        let index = index + c.low;
+                        //println!("found at {}", index);
+                        found[searched_index] = Some(index);
+                        if c.low_searched == c.high_searched {
+                            continue;
+                        }
+                        stack.push_back(SearchTask { 
+                            low: c.low,
+                            high: index - 1,
+                            low_searched: c.low_searched,
+                            high_searched: searched_index.saturating_sub(1),
+                        });
+                        stack.push_back(SearchTask { 
+                            low: index + 1,
+                            high: c.high,
+                            low_searched: searched_index + 1,
+                            high_searched: c.high_searched,
+                        });
+                    },
+                    Err(index) => {
+                        let index = index + c.low;
+                        //println!("inserted at {}", index);
+                        if c.low_searched == c.high_searched {
+                            continue;
+                        }
+                        stack.push_back(SearchTask { 
+                            low: c.low,
+                            high: index,
+                            low_searched: c.low_searched,
+                            high_searched: searched_index.saturating_sub(1),
+                        });
+                        stack.push_back(SearchTask { 
+                            low: index,
+                            high: c.high,
+                            low_searched: searched_index + 1,
+                            high_searched: c.high_searched,
+                        });
+                    },
+                }
+            },
+            None => break,
+        }
+        //count += 1;
+    }
+    found
 }
 
 fn benchmark(multiple_search: &MultipleSearch, length: usize,
@@ -73,9 +171,9 @@ fn benchmark(multiple_search: &MultipleSearch, length: usize,
 }
 
 fn main() {
-    let length = 100000000;
-    let iterations = 5;
-    benchmark(&linear_multiple_search, length, length / 100, iterations, iterations);
-    benchmark(&multiple_value_search, length, length / 100, iterations, iterations);
-    benchmark(&binary_multiple_search, length, length / 100, iterations, iterations);
+    let length = 1000000000;
+    let iterations = 1;
+    benchmark(&linear_multiple_search, length, length / 10000, iterations, iterations);
+    benchmark(&multiple_value_search, length, length / 10000, iterations, iterations);
+    benchmark(&binary_multiple_search, length, length / 10000, iterations, iterations);
 }
