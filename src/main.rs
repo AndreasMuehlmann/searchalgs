@@ -1,9 +1,11 @@
 use std::time::{Duration, Instant};
 use std::collections::VecDeque;
 use std::ops::Div;
+use std::thread;
+use std::sync::{Arc, mpsc};
 
 use rand::prelude::*;
-use rayon::iter::{IndexedParallelIterator, split};
+use rayon::iter::IndexedParallelIterator;
 use rayon::prelude::*;
 
 
@@ -18,6 +20,7 @@ fn choose_random_numbers(length: usize, vector: &Vec<u64>) -> Vec<u64> {
 }
 
 type MultipleSearch = dyn Fn(&Vec<u64>, &Vec<u64>) -> Vec<Option<usize>>;
+type ParallelMultipleSearch = dyn Fn(Vec<u64>, Vec<u64>) -> Vec<Option<usize>>;
 
 fn _binary_search(searched: u64, arr: &Vec<u64>, mut low: usize, mut high: usize) -> Option<usize> {
    let length = arr.len();
@@ -193,6 +196,94 @@ fn split_search(searched_numbers: &Vec<u64>, numbers: &Vec<u64>) -> Vec<Option<u
     found
 }
 
+fn parallel_linear_multiple_search(searched_numbers: Vec<u64>, numbers: Vec<u64>) -> Vec<Option<usize>> {
+    const THREADS: usize = 16;
+    if searched_numbers.len() < THREADS * 2 {
+        println!("searcherd_numbers not long enough");
+        return linear_multiple_search(&searched_numbers, &numbers)
+    }
+    let searched_numbers = Arc::new(searched_numbers);
+    let numbers = Arc::new(numbers);
+    let mut handles = Vec::new();
+    for i in 0..THREADS {
+        let searched_numbers = Arc::clone(&searched_numbers);
+        let numbers = Arc::clone(&numbers);
+        let low = i * searched_numbers.len() / THREADS;
+        let high = ((i + 1) * searched_numbers.len() / THREADS).min(searched_numbers.len());
+
+        let handle = thread::spawn(move || {
+            let mut found: Vec<Option<usize>> = vec![None; high - low];
+            for i in low..high {
+                found[i - low] = match numbers.binary_search(&searched_numbers[i]) {
+                    Ok(index) => Some(index),
+                    Err(_) => None,
+                };
+            }
+            found
+        });
+
+        handles.push(handle);
+    }
+    let mut found = Vec::with_capacity(searched_numbers.len());
+    for handle in handles {
+        found.extend(handle.join().unwrap().iter())
+    }
+
+    found
+}
+
+fn parallel_partial_split_search(searched_numbers: Vec<u64>, numbers: Vec<u64>) -> Vec<Option<usize>> {
+    const THREADS: usize = 16;
+    if searched_numbers.len() < THREADS * 2 {
+        println!("searcherd_numbers not long enough");
+        return linear_multiple_search(&searched_numbers, &numbers)
+    }
+    let searched_numbers = Arc::new(searched_numbers);
+    let numbers = Arc::new(numbers);
+    let mut handles = Vec::new();
+    for i in 0..THREADS {
+        let searched_numbers = Arc::clone(&searched_numbers);
+        let numbers = Arc::clone(&numbers);
+        let low = i * searched_numbers.len() / THREADS;
+        let high = ((i + 1) * searched_numbers.len() / THREADS).min(searched_numbers.len());
+
+        let handle = thread::spawn(move || {
+            let mut found: Vec<Option<usize>> = vec![None; high - low];
+
+            let low_found = match numbers.binary_search(&searched_numbers[low]) {
+                Ok(index) => {
+                    found[0] = Some(index);
+                    index
+                },
+                Err(index) => index,
+            };
+            let high_found = match numbers.binary_search(&searched_numbers[high - 1]) {
+                Ok(index) => {
+                    let last = found.len() - 1;
+                    found[last] = Some(index);
+                    index
+                },
+                Err(index) => index,
+            };
+            for i in low + 1..high - 1 {
+                found[i - low] = match numbers[low_found..high_found].binary_search(&searched_numbers[i]) {
+                    Ok(index) => Some(index),
+                    Err(_) => None,
+                };
+            }
+            found
+        });
+
+        handles.push(handle);
+    }
+    let mut found = Vec::with_capacity(searched_numbers.len());
+    for handle in handles {
+        found.extend(handle.join().unwrap().iter())
+    }
+
+    found
+}
+
 fn benchmark(multiple_search: &MultipleSearch, length: usize,
              length_searched: usize, iterations: usize, iterations_per_numbers: usize) {
     let mut total_duration: Duration = Duration::from_millis(0);
@@ -212,13 +303,33 @@ fn benchmark(multiple_search: &MultipleSearch, length: usize,
     println!("{}", average_duration.as_nanos());
 }
 
+fn benchmark_par(multiple_search: &ParallelMultipleSearch, length: usize,
+             length_searched: usize, iterations: usize) {
+    let mut total_duration: Duration = Duration::from_millis(0);
+    for _ in 0..iterations {
+        let mut numbers = generate_random_numbers(length);
+        numbers.par_sort();
+        let mut searched_numbers = choose_random_numbers(length_searched, &numbers);
+        searched_numbers.par_sort();
+
+        let start = Instant::now();
+        let _ = multiple_search(searched_numbers, numbers);
+        total_duration = total_duration.checked_add(start.elapsed()).unwrap();
+    }
+    let average_duration = total_duration.div(iterations as u32);
+    println!("{}", average_duration.as_nanos());
+
+}
+
 fn main() {
-    let length = 200000000;
+    let length = 500000000;
     let iterations = 1;
-    benchmark(&linear_multiple_search, length, length / 10000, iterations, iterations);
+    benchmark(&linear_multiple_search, length, length / 10, iterations, iterations);
     //benchmark(&multiple_value_search, length, length / 10000, iterations, iterations);
     //benchmark(&binary_multiple_search, length, length / 10000, iterations, iterations);
-    benchmark(&split_search, length, length / 10000, iterations, iterations);
+    benchmark(&split_search, length, length / 10, iterations, iterations);
+    benchmark_par(&parallel_linear_multiple_search, length, length / 100, 1);
+    benchmark_par(&parallel_partial_split_search, length, length / 100, 1);
     /*
     let mut numbers = generate_random_numbers(length);
     numbers.par_sort();
