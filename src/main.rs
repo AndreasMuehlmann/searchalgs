@@ -44,8 +44,8 @@ fn multiple_value_search(searched_numbers: &Vec<u64>, numbers: &Vec<u64>) -> Vec
         let result = &numbers[last_found..].binary_search(&searched_numbers[i]);
         found[i] = match result {
             Ok(index) => {
-                last_found += *index; 
-                Some(*index)
+                last_found += *index;
+                Some(last_found)
             },
             Err(index) => {
                 last_found += *index;
@@ -397,20 +397,22 @@ fn vec_equals(vec1: Vec<Option<usize>>, vec2: Vec<Option<usize>>) -> bool {
 
 fn main() {
     let length = 1000000;
-    let iterations = 1;
-    benchmark(&linear_multiple_search, length, length / 10, iterations, iterations);
-    //benchmark(&multiple_value_search, length, length / 10000, iterations, iterations);
+    let length_searched = length / 10;
+    let iterations = 10;
+    benchmark(&linear_multiple_search, length, length_searched, iterations, 1);
+    benchmark(&multiple_value_search, length, length_searched, iterations, 1);
     //benchmark(&binary_multiple_search, length, length / 10000, iterations, iterations);
-    benchmark(&split_search, length, length / 10, iterations, iterations);
-    benchmark_par(&parallel_linear_multiple_search, length, length / 10, 1);
-    benchmark_par(&parallel_split_search, length, length / 10, 1);
+    benchmark(&split_search, length, length_searched, iterations, 1);
+
+    benchmark_par(&parallel_linear_multiple_search, length, length_searched, iterations);
+    benchmark_par(&parallel_split_search, length, length_searched, iterations);
     /*
-    for i in 0..10000 {
+    for i in 0..100 {
         let mut numbers = generate_random_numbers(length);
         numbers.par_sort();
         let mut searched_numbers = choose_random_numbers(length / 10, &numbers);
         searched_numbers.par_sort();
-        if vec_equals(linear_multiple_search(&searched_numbers, &numbers), parallel_split_search(searched_numbers, numbers)) {
+        if vec_equals(linear_multiple_search(&searched_numbers, &numbers), multiple_value_search(&searched_numbers, &numbers)) {
             //println!("equal");
         } else {
             println!("not equal")

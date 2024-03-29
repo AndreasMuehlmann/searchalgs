@@ -1,12 +1,10 @@
 # searchalgs
 
-
-
 length array searched in 10^6, length array searched for 10^5  
-    - linear multiple search: 5978 us
-    - split search: 5486 us
-    - parallel linear multiple search: 2431 us
-    - parallel split search: 1310 us
+    - linear multiple search: 5164 us
+    - split search: 4148 us
+    - parallel linear multiple search: 1299 us
+    - parallel split search: 969 us
 
 
 for length array searched in 10^5, length array searched for 10^4 
