@@ -232,8 +232,8 @@ fn parallel_split_search(searched_numbers: Arc<Vec<u64>>, numbers: Arc<Vec<u64>>
     for i in 0..THREADS {
         let searched_numbers = Arc::clone(&searched_numbers);
         let numbers = Arc::clone(&numbers);
-        let thread_work = split_indices.len() / THREADS + 1;
-        let split_indices_thread: Vec<(usize, usize)> = split_indices.clone().into_iter().skip(i * thread_work).take(thread_work).collect();
+        let thread_work = split_indices.len().div_ceil(THREADS);
+        let split_indices_thread: Vec<(usize, usize)> = split_indices[i * thread_work..((i + 1) * thread_work).min(split_indices.len())].to_vec();
         let handle = thread::spawn(move || {
             if split_indices_thread.is_empty() { return Vec::new() }
             let low_thread = split_indices_thread[0].0;
@@ -343,17 +343,22 @@ fn vec_equals(vec1: Vec<Option<usize>>, vec2: Vec<Option<usize>>) -> bool {
 }
 
 fn main() {
-    let length = 1000000;
+    let length = 100000000;
     let length_searched = length / 10;
-    let iterations = 10;
+    let iterations = 1;
 
-    //benchmark(&linear_multiple_search, length, length_searched, iterations, 1);
-    //benchmark(&multiple_value_search, length, length_searched, iterations, 1);
-    //benchmark(&binary_multiple_search, length, length / 10000, iterations, iterations);
-    //benchmark(&split_search, length, length_searched, iterations, 5);
+    for _ in 0..5 {
+        //benchmark(&linear_multiple_search, length, length_searched, iterations, 1);
+        //benchmark(&multiple_value_search, length, length_searched, iterations, 1);
+        //benchmark(&binary_multiple_search, length, length / 10000, iterations, iterations);
+        //benchmark(&split_search, length, length_searched, iterations, 5);
 
-    //benchmark_par(&parallel_linear_multiple_search, length, length_searched, iterations, 1);
-    //benchmark_par(&parallel_split_search, length, length_searched, iterations, 1);
+        print!("parallel_linear_multiple_search: ");
+        benchmark_par(&parallel_linear_multiple_search, length, length_searched, iterations, 1);
+        print!("parallel_split_search: ");
+        benchmark_par(&parallel_split_search, length, length_searched, iterations, 1);
+    }
+    /*
     for _ in 0..100 {
         let mut numbers = generate_random_numbers(length);
         numbers.par_sort();
@@ -365,4 +370,5 @@ fn main() {
             println!("not equal")
         }
     }
+    */
 }
