@@ -35,7 +35,6 @@ fn linear_multiple_search(searched_numbers: &Vec<u64>, numbers: &Vec<u64>) -> Ve
     found
 }
 
-// HAS BUG
 #[allow(dead_code)]
 fn multiple_value_search(searched_numbers: &Vec<u64>, numbers: &Vec<u64>) -> Vec<Option<usize>> {
     let mut found: Vec<Option<usize>> = vec![None; searched_numbers.len()];
@@ -256,7 +255,7 @@ fn parallel_split_search(searched_numbers: Arc<Vec<u64>>, numbers: Arc<Vec<u64>>
                     Err(index) => index,
                 };
                 for i in low + 1..high {
-                    found_thread[i - low] = match numbers[low_found..high_found].binary_search(&searched_numbers[i]) {
+                    found_thread[i - low_thread] = match numbers[low_found..high_found].binary_search(&searched_numbers[i]) {
                         Ok(index) => Some(low_found + index),
                         Err(_) => None,
                     };
@@ -347,24 +346,23 @@ fn main() {
     let length = 1000000;
     let length_searched = length / 10;
     let iterations = 10;
-    benchmark(&linear_multiple_search, length, length_searched, iterations, 1);
-    benchmark(&multiple_value_search, length, length_searched, iterations, 1);
-    //benchmark(&binary_multiple_search, length, length / 10000, iterations, iterations);
-    benchmark(&split_search, length, length_searched, iterations, 1);
 
-    benchmark_par(&parallel_linear_multiple_search, length, length_searched, iterations, 1);
-    benchmark_par(&parallel_split_search, length, length_searched, iterations, 1);
-    /*
-    for i in 0..100 {
+    //benchmark(&linear_multiple_search, length, length_searched, iterations, 1);
+    //benchmark(&multiple_value_search, length, length_searched, iterations, 1);
+    //benchmark(&binary_multiple_search, length, length / 10000, iterations, iterations);
+    //benchmark(&split_search, length, length_searched, iterations, 5);
+
+    //benchmark_par(&parallel_linear_multiple_search, length, length_searched, iterations, 1);
+    //benchmark_par(&parallel_split_search, length, length_searched, iterations, 1);
+    for _ in 0..100 {
         let mut numbers = generate_random_numbers(length);
         numbers.par_sort();
         let mut searched_numbers = choose_random_numbers(length / 10, &numbers);
         searched_numbers.par_sort();
-        if vec_equals(linear_multiple_search(&searched_numbers, &numbers), multiple_value_search(&searched_numbers, &numbers)) {
-            //println!("equal");
+        if vec_equals(linear_multiple_search(&searched_numbers, &numbers), parallel_split_search(Arc::new(searched_numbers), Arc::new(numbers))) {
+            // println!("equal");
         } else {
             println!("not equal")
         }
     }
-    */
 }
